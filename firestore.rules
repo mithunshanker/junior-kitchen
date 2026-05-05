@@ -1,0 +1,38 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper: check if the requesting user is an admin
+    function isAdmin() {
+      return request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin";
+    }
+
+    // Users: own profile read/write; admin can read all
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+      allow read: if isAdmin();
+    }
+
+    // Menu: anyone can read (guest browsing); only admin can write
+    match /menu/{dishId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Orders: customers can create & read their own; admin can read & update all
+    match /orders/{orderId} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null && (
+        resource.data.userId == request.auth.uid || isAdmin()
+      );
+      allow update: if isAdmin();
+    }
+
+    // Sessions: each user manages their own; admin can read all
+    match /sessions/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+      allow read: if isAdmin();
+    }
+  }
+}
