@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState, useRef } from "react";
 import { Pencil, Trash2, Plus, X, Search, Loader2 } from "lucide-react";
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, query, limit, startAfter, orderBy } from "firebase/firestore";
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, query, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import type { Dish } from "@/lib/cart-context";
 
@@ -19,12 +19,11 @@ const EMPTY_FORM: DishForm = {
   isAvailable: true,
 };
 
+let cachedDishes: Dish[] | null = null;
+
 function AdminMenu() {
-  const [dishes, setDishes] = useState<Dish[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [lastDoc, setLastDoc] = useState<any>(null);
-  const [hasMore, setHasMore] = useState(true);
+  const [dishes, setDishes] = useState<Dish[]>(cachedDishes || []);
+  const [loading, setLoading] = useState(!cachedDishes);
   
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Dish | null>(null);
@@ -32,39 +31,30 @@ function AdminMenu() {
   const [saving, setSaving] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const PAGE_SIZE = 12;
 
   useEffect(() => {
-    fetchDishes();
+    if (!cachedDishes) {
+      fetchDishes();
+    }
   }, []);
 
-  async function fetchDishes(loadMore = false) {
-    if (loadMore) setLoadingMore(true);
-    else setLoading(true);
-    
+  async function fetchDishes() {
+    setLoading(true);
     try {
-      let q = query(
+      const q = query(
         collection(db, "menu"),
         orderBy("category"),
-        orderBy("name"),
-        limit(PAGE_SIZE)
+        orderBy("name")
       );
-
-      if (loadMore && lastDoc) {
-        q = query(q, startAfter(lastDoc));
-      }
 
       const snap = await getDocs(q);
       const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Dish));
-      
-      setDishes(prev => loadMore ? [...prev, ...list] : list);
-      setLastDoc(snap.docs[snap.docs.length - 1]);
-      setHasMore(snap.docs.length === PAGE_SIZE);
+      cachedDishes = list;
+      setDishes(list);
     } catch (err) {
       console.error("Menu fetch error:", err);
     } finally {
       setLoading(false);
-      setLoadingMore(false);
     }
   }
 
@@ -92,11 +82,14 @@ function AdminMenu() {
     try {
       if (editing) {
         await updateDoc(doc(db, "menu", editing.id), { ...data, updatedAt: serverTimestamp() });
-        setDishes(prev => prev.map(d => d.id === editing.id ? { ...d, ...data } : d));
+        const newList = dishes.map(d => d.id === editing.id ? { ...d, ...data } : d);
+        cachedDishes = newList;
+        setDishes(newList);
       } else {
         const ref = await addDoc(collection(db, "menu"), { ...data, createdAt: serverTimestamp() });
-        // Optionally fetch the new doc or just append. Appending is cheaper.
-        setDishes(prev => [{ id: ref.id, ...data } as Dish, ...prev]);
+        const newList = [{ id: ref.id, ...data } as Dish, ...dishes];
+        cachedDishes = newList;
+        setDishes(newList);
       }
       setModalOpen(false);
     } finally {
@@ -107,14 +100,18 @@ function AdminMenu() {
   async function confirmDelete() {
     if (!deleteId) return;
     await deleteDoc(doc(db, "menu", deleteId));
-    setDishes(prev => prev.filter(d => d.id !== deleteId));
+    const newList = dishes.filter(d => d.id !== deleteId);
+    cachedDishes = newList;
+    setDishes(newList);
     setDeleteId(null);
   }
 
   async function toggleAvailable(d: Dish) {
     const next = !d.isAvailable;
     await updateDoc(doc(db, "menu", d.id), { isAvailable: next });
-    setDishes(prev => prev.map(item => item.id === d.id ? { ...item, isAvailable: next } : item));
+    const newList = dishes.map(item => item.id === d.id ? { ...item, isAvailable: next } : item);
+    cachedDishes = newList;
+    setDishes(newList);
   }
 
   return (
@@ -187,22 +184,6 @@ function AdminMenu() {
                 </div>
               ))}
             </div>
-
-            {hasMore && (
-              <div className="flex justify-center pt-6">
-                <button
-                  onClick={() => fetchDishes(true)}
-                  disabled={loadingMore}
-                  className="flex items-center gap-2 rounded-xl border border-border bg-card px-8 py-3 text-sm font-bold text-foreground hover:bg-secondary disabled:opacity-50 transition-colors shadow-sm"
-                >
-                  {loadingMore ? (
-                    <><Loader2 className="h-4 w-4 animate-spin" /> Loading...</>
-                  ) : (
-                    "Show More Dishes"
-                  )}
-                </button>
-              </div>
-            )}
           </>
         );
       })()}
