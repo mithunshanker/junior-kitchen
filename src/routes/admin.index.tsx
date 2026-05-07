@@ -2,8 +2,8 @@
 
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Receipt, ChefHat, Package, CheckCircle2, Clock, Users } from "lucide-react";
-import { collection, onSnapshot, query, where, orderBy, limit } from "firebase/firestore";
+import { Receipt, ChefHat, Package, CheckCircle2, Clock } from "lucide-react";
+import { collection, onSnapshot, query, orderBy, limit } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
 export const Route = createFileRoute("/admin/")({ component: Dashboard });
@@ -12,7 +12,6 @@ type OrderSummary = { id: string; userName: string; totalAmount: number; status:
 
 function Dashboard() {
   const [counts, setCounts] = useState({ total: 0, pending: 0, preparing: 0, ready: 0, delivered: 0 });
-  const [onlineCount, setOnlineCount] = useState(0);
   const [recentOrders, setRecentOrders] = useState<OrderSummary[]>([]);
 
   // Real-time order counts
@@ -27,13 +26,6 @@ function Dashboard() {
         delivered: docs.filter((s) => s === "delivered").length,
       });
     });
-    return () => unsub();
-  }, []);
-
-  // Real-time online customer count
-  useEffect(() => {
-    const q = query(collection(db, "sessions"), where("isOnline", "==", true));
-    const unsub = onSnapshot(q, (snap) => setOnlineCount(snap.size));
     return () => unsub();
   }, []);
 
@@ -57,7 +49,6 @@ function Dashboard() {
     { label: "Preparing", value: counts.preparing, icon: ChefHat },
     { label: "Ready", value: counts.ready, icon: Package },
     { label: "Delivered", value: counts.delivered, icon: CheckCircle2 },
-    { label: "Online Customers", value: onlineCount, icon: Users, live: true },
   ];
 
   return (

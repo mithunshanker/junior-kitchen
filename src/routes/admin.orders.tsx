@@ -1,9 +1,7 @@
-// routes/admin.orders.tsx — real-time live orders with search + pagination.
-
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { ChevronLeft, ChevronRight, Search, X } from "lucide-react";
-import { collection, onSnapshot, orderBy, query, doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { Search, X, History, Activity, Loader2 } from "lucide-react";
+import { collection, onSnapshot, orderBy, query, doc, updateDoc, serverTimestamp, where, getDocs, limit, startAfter } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
 export const Route = createFileRoute("/admin/orders")({ component: AdminOrders });
@@ -27,25 +25,73 @@ type Order = {
   totalAmount: number;
   status: Status;
   createdAt: any;
-  deliveryTime?: string; // "HH:MM" — customer's requested delivery time
+  deliveryTime?: string;
 };
 
 function AdminOrders() {
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [activeOrders, setActiveOrders] = useState<Order[]>([]);
+  const [previousOrders, setPreviousOrders] = useState<Order[]>([]);
+  const [loadingActive, setLoadingActive] = useState(true);
+  const [loadingPrev, setLoadingPrev] = useState(false);
+  const [showPrevious, setShowPrevious] = useState(false);
+  const [lastDoc, setLastDoc] = useState<any>(null);
+  const [hasMore, setHasMore] = useState(true);
+  
   const [updating, setUpdating] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const PAGE_SIZE = 10;
 
+  // 1. Real-time listener for ACTIVE orders ONLY (pending, preparing, ready)
   useEffect(() => {
-    const q = query(collection(db, "orders"), orderBy("createdAt", "desc"));
+    const q = query(
+      collection(db, "orders"),
+      where("status", "in", ["pending", "preparing", "ready"]),
+      orderBy("createdAt", "desc")
+    );
     const unsub = onSnapshot(q, (snap) => {
-      setOrders(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Order)));
-      setLoading(false);
+      setActiveOrders(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Order)));
+      setLoadingActive(false);
+    }, (err) => {
+      console.error("Orders listener error:", err);
+      setLoadingActive(false);
     });
     return () => unsub();
   }, []);
+
+  // 2. Paginated fetch for PREVIOUS orders (delivered)
+  async function fetchPrevious(loadMore = false) {
+    setLoadingPrev(true);
+    try {
+      let q = query(
+        collection(db, "orders"),
+        where("status", "==", "delivered"),
+        orderBy("createdAt", "desc"),
+        limit(PAGE_SIZE)
+      );
+
+      if (loadMore && lastDoc) {
+        q = query(
+          collection(db, "orders"),
+          where("status", "==", "delivered"),
+          orderBy("createdAt", "desc"),
+          limit(PAGE_SIZE),
+          startAfter(lastDoc)
+        );
+      }
+
+      const snap = await getDocs(q);
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Order));
+      
+      setPreviousOrders(prev => loadMore ? [...prev, ...list] : list);
+      setLastDoc(snap.docs[snap.docs.length - 1] ?? null);
+      setHasMore(snap.docs.length === PAGE_SIZE);
+      setShowPrevious(true);
+    } catch (err) {
+      console.error("Failed to fetch previous orders:", err);
+    } finally {
+      setLoadingPrev(false);
+    }
+  }
 
   async function advanceStatus(order: Order) {
     const idx = FLOW.indexOf(order.status);
@@ -66,9 +112,10 @@ function AdminOrders() {
     } catch { return ""; }
   }
 
-  // Filtered list
+  const displayedOrders = showPrevious ? previousOrders : activeOrders;
+
   const filtered = search
-    ? orders.filter((o) => {
+    ? displayedOrders.filter((o) => {
         const q = search.toLowerCase();
         return (
           o.id.toLowerCase().includes(q) ||
@@ -77,27 +124,47 @@ function AdminOrders() {
           o.status.toLowerCase().includes(q)
         );
       })
-    : orders;
+    : displayedOrders;
 
-  // Sort: non-delivered orders by deliveryTime asc, then delivered at bottom
+  // Sort active orders: by deliveryTime asc if available, else by createdAt desc
   const sorted = [...filtered].sort((a, b) => {
-    const aDelivered = a.status === "delivered";
-    const bDelivered = b.status === "delivered";
-    if (aDelivered !== bDelivered) return aDelivered ? 1 : -1;
+    if (showPrevious) return 0; // Server already sorted these
     if (a.deliveryTime && b.deliveryTime) return a.deliveryTime.localeCompare(b.deliveryTime);
     if (a.deliveryTime) return -1;
     if (b.deliveryTime) return 1;
-    return 0;
+    const aTime = a.createdAt?.toMillis?.() ?? 0;
+    const bTime = b.createdAt?.toMillis?.() ?? 0;
+    return bTime - aTime;
   });
-
-  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
-  const paginated = sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Order Management</h1>
-        <p className="text-sm text-muted-foreground">Live orders, newest first</p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Order Management</h1>
+          <p className="text-sm text-muted-foreground">
+            {showPrevious ? "Viewing delivered orders" : "Live orders, newest first"}
+          </p>
+        </div>
+        
+        <div className="flex rounded-xl bg-secondary p-1">
+          <button
+            onClick={() => setShowPrevious(false)}
+            className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition ${
+              !showPrevious ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Activity className="h-4 w-4" /> Active
+          </button>
+          <button
+            onClick={() => { if (previousOrders.length === 0) fetchPrevious(); else setShowPrevious(true); }}
+            className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition ${
+              showPrevious ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <History className="h-4 w-4" /> Previous
+          </button>
+        </div>
       </div>
 
       {/* Search */}
@@ -106,44 +173,52 @@ function AdminOrders() {
         <input
           type="text"
           value={search}
-          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-          placeholder="Search by order ID, customer name, phone or status…"
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder={`Search ${showPrevious ? "previous" : "active"} orders…`}
           className="w-full rounded-xl border border-input bg-card py-2.5 pl-10 pr-10 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
         />
         {search && (
-          <button onClick={() => { setSearch(""); setPage(1); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+          <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
             <X className="h-4 w-4" />
           </button>
         )}
       </div>
 
-      {loading && (
+      {(loadingActive || (loadingPrev && previousOrders.length === 0)) && (
         <div className="grid gap-4 lg:grid-cols-2">
           {[...Array(4)].map((_, i) => <div key={i} className="h-48 animate-pulse rounded-xl bg-card" />)}
         </div>
       )}
 
-      {!loading && orders.length === 0 && (
+      {!(loadingActive || loadingPrev) && filtered.length === 0 && (
         <div className="rounded-xl bg-card p-12 text-center shadow-[var(--shadow-card)]">
-          <p className="text-muted-foreground">No orders yet.</p>
+          <p className="text-muted-foreground">No {showPrevious ? "previous" : "active"} orders found.</p>
         </div>
       )}
 
-          {!loading && filtered.length === 0 && search && (
-        <p className="py-8 text-center text-sm text-muted-foreground">No orders match "{search}".</p>
-      )}
-
-      {!loading && paginated.length > 0 && (
+      {!loadingActive && (
         <div className="space-y-6">
           <div className="grid gap-4 lg:grid-cols-2">
-            {paginated.map((o) => {
+            {sorted.map((o) => {
               const addr = o.deliveryAddress;
               const nextLabel = FLOW[FLOW.indexOf(o.status) + 1];
               return (
                 <article key={o.id} className="rounded-xl bg-card p-5 shadow-[var(--shadow-card)]">
                   <header className="mb-3 flex items-start justify-between gap-3">
                     <div>
-                      <p className="font-bold">#{o.id.slice(0, 8).toUpperCase()}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-bold">#{o.id.slice(0, 8).toUpperCase()}</p>
+                        {o.userPhone ? (
+                          <a 
+                            href={`tel:${o.userPhone}`} 
+                            className="flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary hover:bg-primary hover:text-white transition-colors"
+                          >
+                            📞 {o.userPhone}
+                          </a>
+                        ) : (
+                          <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] text-muted-foreground">No phone</span>
+                        )}
+                      </div>
                       <p className="text-xs text-muted-foreground">{formatTime(o.createdAt)}</p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -160,7 +235,9 @@ function AdminOrders() {
 
                   <div className="mb-3 rounded-lg bg-secondary p-3 text-sm">
                     <p className="font-semibold">{o.userName}</p>
-                    <p className="text-xs text-muted-foreground">{o.userPhone}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {o.userPhone ? `Phone: ${o.userPhone}` : "No phone provided"}
+                    </p>
                     <p className="mt-1 text-xs text-muted-foreground">
                       {addr.line1}{addr.line2 ? `, ${addr.line2}` : ""}, {addr.city} — {addr.pincode}
                     </p>
@@ -194,24 +271,18 @@ function AdminOrders() {
             })}
           </div>
 
-          {sorted.length > PAGE_SIZE && (
-            <div className="flex items-center justify-between py-2">
+          {showPrevious && hasMore && (
+            <div className="flex justify-center pt-4">
               <button
-                onClick={() => setPage(p => Math.max(1, p - 1))}
-                disabled={page === 1}
-                className="flex items-center gap-1 rounded-lg border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground hover:bg-secondary disabled:opacity-50"
+                onClick={() => fetchPrevious(true)}
+                disabled={loadingPrev}
+                className="flex items-center gap-2 rounded-xl border border-border bg-card px-8 py-3 text-sm font-bold text-foreground hover:bg-secondary disabled:opacity-50 transition-colors shadow-sm"
               >
-                <ChevronLeft className="h-4 w-4" /> Prev
-              </button>
-              <span className="text-sm font-medium text-muted-foreground">
-                Page {page} of {totalPages}
-              </span>
-              <button
-                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                disabled={page === totalPages}
-                className="flex items-center gap-1 rounded-lg border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground hover:bg-secondary disabled:opacity-50"
-              >
-                Next <ChevronRight className="h-4 w-4" />
+                {loadingPrev ? (
+                  <><Loader2 className="h-4 w-4 animate-spin" /> Loading...</>
+                ) : (
+                  "Show More Previous Orders"
+                )}
               </button>
             </div>
           )}

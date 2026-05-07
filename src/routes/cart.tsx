@@ -6,7 +6,7 @@ import { useState } from "react";
 import { ArrowLeft, ShoppingBag, Minus, Plus, Trash2, MapPin, Clock, CheckCircle2, X, AlertCircle, Mail, Lock, Eye, EyeOff, ArrowRight } from "lucide-react";
 import { useCart } from "@/lib/cart-context";
 import { useAuth } from "@/contexts/AuthContext";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, getDoc, doc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { signIn, signInWithGoogle, getUserProfile } from "@/lib/auth";
 
@@ -216,6 +216,16 @@ function CartPage() {
     if (!user) return;
     setPlacing(true);
     try {
+      // 1. Availability Check (since menu is no longer live-synced)
+      for (const item of cart.items) {
+        const snap = await getDoc(doc(db, "menu", item.id));
+        if (!snap.exists() || !snap.data()?.isAvailable) {
+          alert(`Sorry, "${item.name}" is no longer available. Please remove it from your cart.`);
+          setPlacing(false);
+          return;
+        }
+      }
+
       const ref = await addDoc(collection(db, "orders"), {
         userId: user.uid,
         userName: userProfile?.name ?? user.email ?? "Guest",

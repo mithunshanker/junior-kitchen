@@ -1,14 +1,11 @@
-// routes/menu.tsx — live menu from Firestore /menu, filtered by meal time.
-// Accessible WITHOUT login. Users can browse freely; auth gate is in cart.
-
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
-import { Heart, Plus, Check, Flame, ShoppingBag, LogOut, Receipt, LogIn, Search, X } from "lucide-react";
+import { useEffect, useMemo, useState, useRef } from "react";
+import { Heart, Plus, Minus, Check, Flame, ShoppingBag, LogOut, Receipt, LogIn, Search, X, Loader2 } from "lucide-react";
 import { useCart, type Dish } from "@/lib/cart-context";
 import { Logo } from "@/components/logo";
 import { useAuth } from "@/contexts/AuthContext";
 import { signOut } from "@/lib/auth";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { collection, query, where, getDocs, limit, startAfter, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
 export const Route = createFileRoute("/menu")({
@@ -32,30 +29,75 @@ function MenuPage() {
   const navigate = useNavigate();
   const [dishes, setDishes] = useState<Dish[]>([]);
   const [loadingDishes, setLoadingDishes] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [lastDoc, setLastDoc] = useState<any>(null);
+  const [hasMore, setHasMore] = useState(true);
   const [added, setAdded] = useState<Record<string, boolean>>({});
   const [search, setSearch] = useState("");
+  // Fetch 20 at a time — meal-filter runs client-side so we always have enough to show
+  const PAGE_SIZE = 20;
+  
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Real-time Firestore listener for available dishes (no auth required to read)
+  // Initial fetch on mount
   useEffect(() => {
-    const q = query(collection(db, "menu"), where("isAvailable", "==", true));
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Dish));
-        setDishes(list);
-        setLoadingDishes(false);
-      },
-      (err) => {
-        console.error("Menu fetch error:", err);
-        setLoadingDishes(false);
-      }
-    );
-    return () => unsub();
+    fetchDishes(false);
   }, []);
 
-  // Filter by current meal period
+  async function fetchDishes(loadMore: boolean) {
+    if (loadMore) setLoadingMore(true);
+    else setLoadingDishes(true);
+    
+    try {
+      const baseConstraints = [
+        where("isAvailable", "==", true),
+        orderBy("category"),
+        orderBy("name"),
+        limit(PAGE_SIZE),
+      ] as const;
+
+      let q = query(collection(db, "menu"), ...baseConstraints);
+
+      if (loadMore && lastDoc) {
+        q = query(collection(db, "menu"), ...baseConstraints, startAfter(lastDoc));
+      }
+
+      const snap = await getDocs(q);
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Dish));
+      
+      setDishes(prev => loadMore ? [...prev, ...list] : list);
+      setLastDoc(snap.docs[snap.docs.length - 1] ?? null);
+      setHasMore(snap.docs.length === PAGE_SIZE);
+    } catch (err) {
+      console.error("Menu fetch error:", err);
+    } finally {
+      setLoadingDishes(false);
+      setLoadingMore(false);
+    }
+  }
+
+  // Attach / reattach intersection observer whenever pagination state changes
+  useEffect(() => {
+    if (loadingDishes || !hasMore || !bottomRef.current) return;
+    
+    observerRef.current?.disconnect();
+    observerRef.current = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting && !loadingMore) {
+        fetchDishes(true);
+      }
+    }, { threshold: 0.1 });
+
+    if (bottomRef.current) {
+      observerRef.current.observe(bottomRef.current);
+    }
+
+    return () => observerRef.current?.disconnect();
+  }, [loadingDishes, loadingMore, hasMore, lastDoc]);
+
+  // Filter by current meal period in-memory (no extra reads, no composite index needed)
   const mealDishes = useMemo(
-    () => dishes.filter((d) => d.availability?.[meal] === true),
+    () => dishes.filter((d) => (d as any).availability?.[meal] === true),
     [dishes, meal]
   );
 
@@ -215,26 +257,66 @@ function MenuPage() {
                         <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
                           {d.description}
                         </p>
-                        <button
-                          onClick={() => handleAdd(d)}
-                          className={`mt-auto self-end flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                            added[d.id]
-                              ? "bg-[var(--success,oklch(0.5_0.14_145))] text-white"
-                              : "bg-primary text-primary-foreground hover:bg-[var(--primary-dark)]"
-                          }`}
-                        >
-                          {added[d.id] ? (
-                            <><Check className="h-3.5 w-3.5" /> Added</>
-                          ) : (
-                            <><Plus className="h-3.5 w-3.5" /> Add to Cart</>
-                          )}
-                        </button>
+                        {(() => {
+                          const item = cart.items.find((i) => i.id === d.id);
+                          const q = item?.quantity || 0;
+
+                          if (q === 0) {
+                            return (
+                              <button
+                                onClick={() => handleAdd(d)}
+                                className={`mt-auto self-end flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                                  added[d.id]
+                                    ? "bg-[var(--success,oklch(0.5_0.14_145))] text-white"
+                                    : "bg-primary text-primary-foreground hover:bg-[var(--primary-dark)] shadow-[0_4px_12px_oklch(0.52_0.21_27/0.3)]"
+                                }`}
+                              >
+                                {added[d.id] ? (
+                                  <><Check className="h-3.5 w-3.5" /> Added</>
+                                ) : (
+                                  <><Plus className="h-3.5 w-3.5" /> Add</>
+                                )}
+                              </button>
+                            );
+                          }
+
+                          return (
+                            <div className="mt-auto self-end flex items-center overflow-hidden rounded-lg border border-primary/20 bg-primary/5 p-0.5">
+                              <button
+                                onClick={() => cart.dec(d.id)}
+                                className="flex h-7 w-7 items-center justify-center rounded-md text-primary hover:bg-primary/10 transition-colors"
+                                aria-label="Decrease quantity"
+                              >
+                                <Minus className="h-3.5 w-3.5" />
+                              </button>
+                              <span className="w-8 text-center text-sm font-bold text-foreground">
+                                {q}
+                              </span>
+                              <button
+                                onClick={() => cart.inc(d.id)}
+                                className="flex h-7 w-7 items-center justify-center rounded-md text-primary hover:bg-primary/10 transition-colors"
+                                aria-label="Increase quantity"
+                              >
+                                <Plus className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          );
+                        })()}
                       </div>
                     </li>
                   ))}
                 </ul>
               </section>
             ))}
+          </div>
+        )}
+
+        {/* Sentinel for infinite scroll */}
+        <div ref={bottomRef} className="h-4 w-full" />
+        
+        {loadingMore && (
+          <div className="flex justify-center py-4">
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
           </div>
         )}
       </main>

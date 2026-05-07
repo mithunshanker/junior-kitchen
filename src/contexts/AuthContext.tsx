@@ -1,11 +1,8 @@
-// contexts/AuthContext.tsx — provides auth state (user + profile) app-wide.
-// Marks session offline on tab close.
-
-import React, { createContext, useContext, useEffect, useRef, useState } from "react";
+import React, { createContext, useContext, useEffect, useState } from "react";
 import { type User } from "firebase/auth";
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { onAuthChange, getUserProfile, type UserProfile } from "@/lib/auth";
+import { onAuthChange, type UserProfile } from "@/lib/auth";
 
 interface AuthContextType {
   user: User | null;
@@ -19,41 +16,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  // Keep a stable ref to current user so beforeunload can read it
-  const userRef = useRef<User | null>(null);
 
   useEffect(() => {
-    userRef.current = user;
-  }, [user]);
+    let unsubProfile: (() => void) | null = null;
 
-  useEffect(() => {
-    const unsubscribe = onAuthChange(async (firebaseUser) => {
+    const unsubscribeAuth = onAuthChange((firebaseUser) => {
       setUser(firebaseUser);
+      
+      // Clear previous profile listener if any
+      if (unsubProfile) {
+        unsubProfile();
+        unsubProfile = null;
+      }
+
       if (firebaseUser) {
-        const profile = await getUserProfile(firebaseUser.uid);
-        setUserProfile(profile);
+        // Set up real-time listener for the user profile
+        unsubProfile = onSnapshot(doc(db, "users", firebaseUser.uid), (snap) => {
+          if (snap.exists()) {
+            setUserProfile(snap.data() as UserProfile);
+          } else {
+            setUserProfile(null);
+          }
+          setLoading(false);
+        }, (err) => {
+          console.error("Profile listener error:", err);
+          setLoading(false);
+        });
       } else {
         setUserProfile(null);
+        setLoading(false);
       }
-      setLoading(false);
     });
 
-    // Mark session offline when tab closes
-    const handleBeforeUnload = async () => {
-      const u = userRef.current;
-      if (u) {
-        await setDoc(
-          doc(db, "sessions", u.uid),
-          { isOnline: false, lastSeen: serverTimestamp() },
-          { merge: true }
-        );
-      }
-    };
-    window.addEventListener("beforeunload", handleBeforeUnload);
-
     return () => {
-      unsubscribe();
-      window.removeEventListener("beforeunload", handleBeforeUnload);
+      unsubscribeAuth();
+      if (unsubProfile) unsubProfile();
     };
   }, []);
 
