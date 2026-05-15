@@ -2,11 +2,12 @@
 
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { ArrowLeft, Receipt, ChevronRight, Search, X, Clock } from "lucide-react";
+import { ArrowLeft, Receipt, ChevronRight, Search, X, Clock, Bell } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { useAuth } from "@/contexts/AuthContext";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 
 export const Route = createFileRoute("/orders/")({ component: CustomerOrdersPage });
 
@@ -24,6 +25,7 @@ function CustomerOrdersPage() {
   const [orders, setOrders] = useState<OrderSummary[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
   const [search, setSearch] = useState("");
+  const { permission, loading: pushLoading, requestPermission } = usePushNotifications();
 
   useEffect(() => {
     if (loading) return;
@@ -94,6 +96,24 @@ function CustomerOrdersPage() {
       </header>
 
       <main className="mx-auto max-w-2xl px-4 py-6">
+        {/* Notification opt-in banner */}
+        {permission === "unknown" && (
+          <div className="mb-4 flex items-center gap-3 rounded-xl border border-primary/20 bg-[var(--primary-light)] px-4 py-3">
+            <Bell className="h-5 w-5 shrink-0 text-primary" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-foreground">Get order updates</p>
+              <p className="text-xs text-muted-foreground">Enable notifications to know when your order is ready.</p>
+            </div>
+            <button
+              onClick={requestPermission}
+              disabled={pushLoading}
+              className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground hover:bg-[var(--primary-dark)] disabled:opacity-50"
+            >
+              {pushLoading ? "…" : "Enable"}
+            </button>
+          </div>
+        )}
+
         {/* Search */}
         {orders.length > 0 && (
           <div className="relative mb-4">

@@ -1,9 +1,10 @@
-// lib/firebase.ts — initialize Firebase app, Auth, and Firestore once.
+// lib/firebase.ts — initialize Firebase app, Auth, Firestore, and Messaging once.
 // All credentials read from import.meta.env (Vite) — never hardcoded.
 
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
+import { getMessaging, isSupported } from "firebase/messaging";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -20,4 +21,11 @@ const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+
+// Messaging is only supported in browser contexts (not SSR, not old browsers)
+export let messaging: ReturnType<typeof getMessaging> | null = null;
+isSupported().then((supported) => {
+  if (supported) messaging = getMessaging(app);
+});
+
 export default app;

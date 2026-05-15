@@ -244,6 +244,14 @@ function CartPage() {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
+
+      // Fire-and-forget: notify all admins and delivery partners
+      fetch("/api/notify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "new_order", orderId: ref.id }),
+      }).catch(() => {/* non-critical */});
+
       cart.clear();
       navigate({ to: "/orders/$orderId", params: { orderId: ref.id } });
     } catch (err) {
