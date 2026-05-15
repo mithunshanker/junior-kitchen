@@ -37,16 +37,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
+  // Validate env vars immediately so misconfiguration is obvious in logs
+  if (!process.env.FIREBASE_PROJECT_ID || !process.env.FIREBASE_CLIENT_EMAIL || !process.env.FIREBASE_PRIVATE_KEY) {
+    console.error("[notify] MISSING env vars: FIREBASE_PROJECT_ID / FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY");
+    return res.status(500).json({ error: "Server misconfiguration: missing Firebase Admin env vars" });
+  }
+
   const { type, orderId } = req.body ?? {};
   if (!type || !orderId) {
     return res.status(400).json({ error: "Missing type or orderId" });
   }
+
+  console.log(`[notify] Event: ${type} | Order: ${orderId}`);
 
   try {
     const app   = getAdminApp();
     const db    = getFirestore(app);
     const fcm   = getMessaging(app);
     const tokens: string[] = [];
+
 
     if (type === "new_order") {
       // ── Notify admins and delivery partners ──────────────────────────────
