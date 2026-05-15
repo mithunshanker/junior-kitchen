@@ -6,6 +6,14 @@ import tsconfigPaths from "vite-tsconfig-paths";
 import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
+  server: {
+    proxy: {
+      "/api": {
+        target: "https://junior-kitchen.vercel.app",
+        changeOrigin: true,
+      },
+    },
+  },
   plugins: [
     TanStackRouterVite({ autoCodeSplitting: true }),
     react(),
