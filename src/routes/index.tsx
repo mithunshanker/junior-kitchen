@@ -1,5 +1,5 @@
 // routes/index.tsx — splash screen, redirects based on auth state.
-// Admin → /admin | Customer → /menu | Unauthenticated → /menu (free browse)
+// Admin → /admin | Delivery → /admin/orders | Customer → /menu | Unauthenticated → /menu (free browse)
 
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
@@ -18,6 +18,8 @@ function SplashPage() {
     if (loading) return;
     if (userProfile?.role === "admin") {
       navigate({ to: "/admin" });
+    } else if (userProfile?.role === "delivery") {
+      navigate({ to: "/admin/orders" });
     } else {
       navigate({ to: "/menu" });
     }
