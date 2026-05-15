@@ -45,6 +45,17 @@ function MenuPage() {
     fetchDishes(false);
   }, []);
 
+  // Redirect staff users away from the customer menu
+  // (Fixes the issue where an old PWA shortcut opens /menu directly)
+  useEffect(() => {
+    if (userProfile?.role === "admin") {
+      navigate({ to: "/admin", replace: true });
+    } else if (userProfile?.role === "delivery") {
+      navigate({ to: "/admin/orders", replace: true });
+    }
+  }, [userProfile, navigate]);
+
+
   async function fetchDishes(loadMore: boolean) {
     if (loadMore) setLoadingMore(true);
     else setLoadingDishes(true);
