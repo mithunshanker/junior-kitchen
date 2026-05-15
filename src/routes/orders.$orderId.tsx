@@ -23,7 +23,6 @@ type OrderDoc = {
   totalAmount: number;
   deliveryAddress: { line1: string; line2?: string; city: string; pincode: string };
   items: { name: string; price: number; quantity: number }[];
-  deliveryTime?: string;
 };
 
 function OrderTrackingPage() {
@@ -66,10 +65,13 @@ function OrderTrackingPage() {
     <div className="min-h-screen bg-secondary pb-10">
       <header className="sticky top-0 z-10 border-b border-border bg-card">
         <div className="mx-auto flex max-w-2xl items-center gap-3 px-4 py-3">
-          <Link to="/menu" className="flex h-9 w-9 items-center justify-center rounded-full bg-secondary hover:bg-primary/10 hover:text-primary">
+          <Link to="/menu" aria-label="Back to Menu" className="flex h-9 w-9 items-center justify-center rounded-full bg-secondary hover:bg-primary/10 hover:text-primary">
             <ArrowLeft className="h-4 w-4" />
           </Link>
           <Logo className="h-9 w-auto" />
+          <Link to="/orders/" className="ml-auto text-xs font-semibold text-primary hover:underline">
+            My Orders
+          </Link>
         </div>
       </header>
 
@@ -85,15 +87,6 @@ function OrderTrackingPage() {
             </span>
           </div>
           <p className="text-base font-semibold text-foreground">{status.message}</p>
-
-          {order.deliveryTime && (
-            <div className="mt-3 flex items-center gap-2 rounded-lg bg-[oklch(0.93_0.06_250)]/60 px-3 py-2 text-sm">
-              <Clock className="h-4 w-4 text-[oklch(0.35_0.18_250)]" />
-              <span className="font-medium text-[oklch(0.3_0.18_250)]">
-                Requested delivery by <strong>{order.deliveryTime}</strong>
-              </span>
-            </div>
-          )}
 
           {/* Progress stepper */}
           <div className="mt-6 flex items-center justify-between">

@@ -16,7 +16,6 @@ type OrderSummary = {
   status: string;
   createdAt: any;
   items: { name: string; quantity: number }[];
-  deliveryTime?: string;
 };
 
 function CustomerOrdersPage() {
@@ -42,9 +41,10 @@ function CustomerOrdersPage() {
       q,
       (snap) => {
         const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() } as OrderSummary));
+        // Orders with null createdAt (pending serverTimestamp write) sort to the end
         docs.sort((a, b) => {
-          const tA = a.createdAt?.toMillis?.() || 0;
-          const tB = b.createdAt?.toMillis?.() || 0;
+          const tA = a.createdAt?.toMillis?.() ?? -1;
+          const tB = b.createdAt?.toMillis?.() ?? -1;
           return tB - tA; // descending
         });
         setOrders(docs);
@@ -151,11 +151,6 @@ function CustomerOrdersPage() {
                     <p className="text-xs text-muted-foreground">{formatDate(o.createdAt)}</p>
                   </div>
                   <div className="flex items-center gap-2">
-                    {o.deliveryTime && (
-                      <span className="flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
-                        <Clock className="h-3 w-3" /> {o.deliveryTime}
-                      </span>
-                    )}
                     <p className={`text-xs font-bold capitalize ${STATUS_COLOR[o.status] || "text-primary"}`}>
                       {o.status}
                     </p>

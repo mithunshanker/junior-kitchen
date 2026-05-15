@@ -3,18 +3,19 @@
 
 import { createFileRoute, Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { LayoutDashboard, Utensils, Receipt, Users, LogOut, Menu, X } from "lucide-react";
+import { LayoutDashboard, Utensils, Receipt, Users, LogOut, Menu, X, Truck } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { useAuth } from "@/contexts/AuthContext";
 import { signOut } from "@/lib/auth";
 
 export const Route = createFileRoute("/admin")({ component: AdminLayout });
 
-const NAV = [
-  { to: "/admin", label: "Dashboard", icon: LayoutDashboard, exact: true },
-  { to: "/admin/menu", label: "Menu", icon: Utensils },
-  { to: "/admin/orders", label: "Orders", icon: Receipt },
-  { to: "/admin/customers", label: "Customers", icon: Users },
+const ALL_NAV = [
+  { to: "/admin", label: "Dashboard", icon: LayoutDashboard, exact: true, roles: ["admin"] },
+  { to: "/admin/menu", label: "Menu", icon: Utensils, roles: ["admin"] },
+  { to: "/admin/orders", label: "Orders", icon: Receipt, roles: ["admin", "delivery"] },
+  { to: "/admin/customers", label: "Customers", icon: Users, roles: ["admin", "delivery"] },
+  { to: "/admin/delivery", label: "Delivery Partners", icon: Truck, roles: ["admin"] },
 ] as const;
 
 function AdminLayout() {
@@ -23,12 +24,23 @@ function AdminLayout() {
   const { user, userProfile, loading } = useAuth();
   const navigate = useNavigate();
 
-  // Role guard — redirect if not admin
+  const role = userProfile?.role;
+  const NAV = ALL_NAV.filter((item) => item.roles.includes(role as string));
+
+  // Role guard — redirect based on role
   useEffect(() => {
     if (loading) return;
     if (!user) { navigate({ to: "/login" }); return; }
-    if (userProfile && userProfile.role !== "admin") { navigate({ to: "/menu" }); }
-  }, [loading, user, userProfile, navigate]);
+    // If user exists but profile is missing (broken account), redirect to login
+    if (!role) { navigate({ to: "/login" }); return; }
+    if (role === "customer") { navigate({ to: "/menu" }); return; }
+    if (role === "delivery") {
+      // Delivery partners can only access orders and customers
+      const allowed = ["/admin/orders", "/admin/customers"];
+      const isAllowed = allowed.some((p) => path === p || path.startsWith(p + "/"));
+      if (!isAllowed) { navigate({ to: "/admin/orders" }); }
+    }
+  }, [loading, user, role, navigate, path]);
 
   async function handleLogout() {
     await signOut();
@@ -38,8 +50,8 @@ function AdminLayout() {
   const isActive = (to: string, exact?: boolean) =>
     exact ? path === to : path === to || path.startsWith(to + "/");
 
-  // Show nothing while checking auth
-  if (loading || !userProfile) {
+  // Block render until auth + profile fully resolved to prevent flash of forbidden content
+  if (loading || (user && !userProfile)) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-secondary">
         <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />
@@ -57,13 +69,13 @@ function AdminLayout() {
           </div>
           <div>
             <p className="text-sm font-bold leading-tight">Junior Kitchen</p>
-            <p className="text-[10px] uppercase tracking-wider opacity-80">Admin Portal</p>
+            <p className="text-[10px] uppercase tracking-wider opacity-80">{role === "delivery" ? "Delivery Portal" : "Admin Portal"}</p>
           </div>
         </div>
         <nav className="flex-1 space-y-1 px-3 py-4">
           {NAV.map((item) => {
             const Icon = item.icon;
-            const active = isActive(item.to, item.exact);
+            const active = isActive(item.to, (item as any).exact);
             return (
               <Link key={item.to} to={item.to as any} className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${active ? "bg-white text-primary shadow-sm" : "text-white/90 hover:bg-white/10"}`}>
                 <Icon className="h-4 w-4" /> {item.label}
@@ -92,7 +104,7 @@ function AdminLayout() {
             <nav className="space-y-1 p-3">
               {NAV.map((item) => {
                 const Icon = item.icon;
-                const active = isActive(item.to, item.exact);
+                const active = isActive(item.to, (item as any).exact);
                 return (
                   <Link key={item.to} to={item.to as any} onClick={() => setOpen(false)} className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium ${active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-secondary"}`}>
                     <Icon className="h-4 w-4" /> {item.label}
@@ -111,10 +123,10 @@ function AdminLayout() {
         </main>
 
         {/* Mobile bottom tab bar */}
-        <nav className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-4 border-t border-border bg-card md:hidden">
+        <nav className={`fixed inset-x-0 bottom-0 z-20 grid border-t border-border bg-card md:hidden`} style={{ gridTemplateColumns: `repeat(${NAV.length}, minmax(0, 1fr))` }}>
           {NAV.map((item) => {
             const Icon = item.icon;
-            const active = isActive(item.to, item.exact);
+            const active = isActive(item.to, (item as any).exact);
             return (
               <Link key={item.to} to={item.to as any} className={`flex flex-col items-center gap-1 py-2.5 text-[10px] font-medium transition ${active ? "text-primary" : "text-muted-foreground"}`}>
                 <Icon className="h-5 w-5" /> {item.label}

@@ -27,6 +27,11 @@ function SignupPage() {
       setError("Please fill in all fields.");
       return;
     }
+    // Validate phone: 7–15 digits, optional leading +
+    if (!/^\+?[0-9]{7,15}$/.test(form.phone.replace(/\s/g, ""))) {
+      setError("Please enter a valid phone number (digits only, 7–15 characters).");
+      return;
+    }
     if (form.password.length < 6) {
       setError("Password must be at least 6 characters.");
       return;
@@ -62,6 +67,8 @@ function SignupPage() {
         navigate({ to: "/complete-profile" });
       } else if (profile?.role === "admin") {
         navigate({ to: "/admin" });
+      } else if (profile?.role === "delivery") {
+        navigate({ to: "/admin/orders" });
       } else {
         navigate({ to: "/menu" });
       }

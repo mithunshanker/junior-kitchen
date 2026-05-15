@@ -19,23 +19,19 @@ const EMPTY_FORM: DishForm = {
   isAvailable: true,
 };
 
-let cachedDishes: Dish[] | null = null;
-
 function AdminMenu() {
-  const [dishes, setDishes] = useState<Dish[]>(cachedDishes || []);
-  const [loading, setLoading] = useState(!cachedDishes);
+  const [dishes, setDishes] = useState<Dish[]>([]);
+  const [loading, setLoading] = useState(true);
   
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Dish | null>(null);
   const [form, setForm] = useState<DishForm>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
-  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [search, setSearch] = useState("");
 
   useEffect(() => {
-    if (!cachedDishes) {
-      fetchDishes();
-    }
+    fetchDishes();
   }, []);
 
   async function fetchDishes() {
@@ -49,7 +45,6 @@ function AdminMenu() {
 
       const snap = await getDocs(q);
       const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Dish));
-      cachedDishes = list;
       setDishes(list);
     } catch (err) {
       console.error("Menu fetch error:", err);
@@ -71,7 +66,12 @@ function AdminMenu() {
   }
 
   async function save() {
-    if (!form.name || !form.price || !form.category) return;
+    const parsedPrice = Number(form.price);
+    if (!form.name || !form.category || !form.price) return;
+    if (isNaN(parsedPrice) || parsedPrice <= 0) {
+      alert("Please enter a valid price greater than ₹0.");
+      return;
+    }
     setSaving(true);
     const data = {
       name: form.name.trim(), description: form.description.trim(),
@@ -83,12 +83,10 @@ function AdminMenu() {
       if (editing) {
         await updateDoc(doc(db, "menu", editing.id), { ...data, updatedAt: serverTimestamp() });
         const newList = dishes.map(d => d.id === editing.id ? { ...d, ...data } : d);
-        cachedDishes = newList;
         setDishes(newList);
       } else {
         const ref = await addDoc(collection(db, "menu"), { ...data, createdAt: serverTimestamp() });
         const newList = [{ id: ref.id, ...data } as Dish, ...dishes];
-        cachedDishes = newList;
         setDishes(newList);
       }
       setModalOpen(false);
@@ -98,19 +96,17 @@ function AdminMenu() {
   }
 
   async function confirmDelete() {
-    if (!deleteId) return;
-    await deleteDoc(doc(db, "menu", deleteId));
-    const newList = dishes.filter(d => d.id !== deleteId);
-    cachedDishes = newList;
+    if (!deleteTarget) return;
+    await deleteDoc(doc(db, "menu", deleteTarget.id));
+    const newList = dishes.filter(d => d.id !== deleteTarget.id);
     setDishes(newList);
-    setDeleteId(null);
+    setDeleteTarget(null);
   }
 
   async function toggleAvailable(d: Dish) {
     const next = !d.isAvailable;
     await updateDoc(doc(db, "menu", d.id), { isAvailable: next });
     const newList = dishes.map(item => item.id === d.id ? { ...item, isAvailable: next } : item);
-    cachedDishes = newList;
     setDishes(newList);
   }
 
@@ -177,8 +173,8 @@ function AdminMenu() {
                       {d.isAvailable ? "Available" : "Unavailable"}
                     </label>
                     <div className="flex gap-1">
-                      <button onClick={() => openEdit(d)} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-primary"><Pencil className="h-4 w-4" /></button>
-                      <button onClick={() => setDeleteId(d.id)} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-primary/10 hover:text-primary"><Trash2 className="h-4 w-4" /></button>
+                      <button aria-label={`Edit ${d.name}`} onClick={() => openEdit(d)} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-primary"><Pencil className="h-4 w-4" /></button>
+                      <button aria-label={`Delete ${d.name}`} onClick={() => setDeleteTarget({ id: d.id, name: d.name })} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-primary/10 hover:text-primary"><Trash2 className="h-4 w-4" /></button>
                     </div>
                   </div>
                 </div>
@@ -231,13 +227,14 @@ function AdminMenu() {
       )}
 
       {/* Delete confirm */}
-      {deleteId && (
+      {deleteTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-sm rounded-2xl bg-card p-6 shadow-xl text-center">
-            <h2 className="mb-2 font-bold">Delete dish?</h2>
+            <h2 className="mb-1 font-bold">Delete dish?</h2>
+            <p className="mb-1 text-sm font-semibold text-primary">"{deleteTarget.name}"</p>
             <p className="mb-5 text-sm text-muted-foreground">This cannot be undone.</p>
             <div className="flex gap-3">
-              <button onClick={() => setDeleteId(null)} className="flex-1 rounded-lg border border-border py-2 text-sm font-medium hover:bg-secondary">Cancel</button>
+              <button onClick={() => setDeleteTarget(null)} className="flex-1 rounded-lg border border-border py-2 text-sm font-medium hover:bg-secondary">Cancel</button>
               <button onClick={confirmDelete} className="flex-1 rounded-lg bg-primary py-2 text-sm font-semibold text-primary-foreground hover:bg-[var(--primary-dark)]">Delete</button>
             </div>
           </div>

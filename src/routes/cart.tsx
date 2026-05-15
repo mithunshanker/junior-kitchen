@@ -2,7 +2,7 @@
 // Unauthenticated users see a login modal with Google Sign-In highlighted.
 
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { ArrowLeft, ShoppingBag, Minus, Plus, Trash2, MapPin, Clock, CheckCircle2, X, AlertCircle, Mail, Lock, Eye, EyeOff, ArrowRight } from "lucide-react";
 import { useCart } from "@/lib/cart-context";
 import { useAuth } from "@/contexts/AuthContext";
@@ -200,41 +200,47 @@ function CartPage() {
   const navigate = useNavigate();
   const [addr, setAddr] = useState<Addr>({ line1: "", line2: "", city: "", pincode: "" });
   const [errors, setErrors] = useState<Errors>({});
-  const [touched, setTouched] = useState(false);
+  const [touchedFields, setTouchedFields] = useState<Set<keyof Addr>>(new Set());
   const [placing, setPlacing] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
-  const [deliveryTime, setDeliveryTime] = useState("");
-  const [deliveryTimeError, setDeliveryTimeError] = useState("");
+
+  function touch(k: keyof Addr) {
+    setTouchedFields((prev) => new Set(prev).add(k));
+    setErrors(validate(addr));
+  }
 
   function update<K extends keyof Addr>(k: K, v: string) {
     const next = { ...addr, [k]: v };
     setAddr(next);
-    if (touched) setErrors(validate(next));
+    if (touchedFields.has(k)) setErrors(validate(next));
   }
 
   async function doPlaceOrder() {
     if (!user) return;
     setPlacing(true);
     try {
-      // 1. Availability Check (since menu is no longer live-synced)
-      for (const item of cart.items) {
-        const snap = await getDoc(doc(db, "menu", item.id));
-        if (!snap.exists() || !snap.data()?.isAvailable) {
-          alert(`Sorry, "${item.name}" is no longer available. Please remove it from your cart.`);
-          setPlacing(false);
-          return;
-        }
+      // 1. Parallel availability check — faster and narrower race window than sequential
+      const availabilityChecks = await Promise.all(
+        cart.items.map((item) => getDoc(doc(db, "menu", item.id)))
+      );
+      const unavailable = cart.items.find(
+        (item, idx) => !availabilityChecks[idx].exists() || !availabilityChecks[idx].data()?.isAvailable
+      );
+      if (unavailable) {
+        alert(`Sorry, "${unavailable.name}" is no longer available. Please remove it from your cart.`);
+        setPlacing(false);
+        return;
       }
 
       const ref = await addDoc(collection(db, "orders"), {
         userId: user.uid,
         userName: userProfile?.name ?? user.email ?? "Guest",
         userPhone: userProfile?.phone ?? "",
+        userEmail: user.email ?? "",
         deliveryAddress: { line1: addr.line1, line2: addr.line2 || "", city: addr.city, pincode: addr.pincode },
         items: cart.items.map((i) => ({ dishId: i.id, name: i.name, price: i.price, quantity: i.quantity })),
         totalAmount: cart.total,
         status: "pending",
-        deliveryTime,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
@@ -251,14 +257,9 @@ function CartPage() {
   async function handlePlaceOrder() {
     const e = validate(addr);
     setErrors(e);
-    setTouched(true);
+    // Mark all required fields as touched so errors become visible
+    setTouchedFields(new Set(["line1", "city", "pincode"]));
     let hasError = Object.keys(e).length > 0;
-    if (!deliveryTime) {
-      setDeliveryTimeError("Please select your preferred delivery time.");
-      hasError = true;
-    } else {
-      setDeliveryTimeError("");
-    }
     if (hasError) return;
 
     if (!user) {
@@ -275,8 +276,15 @@ function CartPage() {
     setTimeout(() => doPlaceOrder(), 400);
   }
 
-  const liveErrors = touched ? errors : {};
-  const isValid = Object.keys(validate(addr)).length === 0 && cart.items.length > 0 && !!deliveryTime;
+  const liveErrors: Errors = {
+    line1: touchedFields.has("line1") ? errors.line1 : undefined,
+    city:  touchedFields.has("city")  ? errors.city  : undefined,
+    pincode: touchedFields.has("pincode") ? errors.pincode : undefined,
+  };
+  const isValid = useMemo(
+    () => Object.keys(validate(addr)).length === 0 && cart.items.length > 0,
+    [addr, cart.items.length]
+  );
 
   if (cart.items.length === 0) {
     return (
@@ -324,11 +332,11 @@ function CartPage() {
                     <p className="text-xs text-muted-foreground">₹{i.price} each · ₹{i.price * i.quantity}</p>
                   </div>
                   <div className="flex items-center gap-1.5 rounded-full bg-secondary px-1 py-1">
-                    <button onClick={() => cart.dec(i.id)} className="flex h-7 w-7 items-center justify-center rounded-full bg-card text-primary hover:bg-primary hover:text-primary-foreground"><Minus className="h-3.5 w-3.5" /></button>
+                    <button aria-label={`Decrease quantity of ${i.name}`} onClick={() => cart.dec(i.id)} className="flex h-7 w-7 items-center justify-center rounded-full bg-card text-primary hover:bg-primary hover:text-primary-foreground"><Minus className="h-3.5 w-3.5" /></button>
                     <span className="w-5 text-center text-sm font-semibold">{i.quantity}</span>
-                    <button onClick={() => cart.inc(i.id)} className="flex h-7 w-7 items-center justify-center rounded-full bg-card text-primary hover:bg-primary hover:text-primary-foreground"><Plus className="h-3.5 w-3.5" /></button>
+                    <button aria-label={`Increase quantity of ${i.name}`} onClick={() => cart.inc(i.id)} className="flex h-7 w-7 items-center justify-center rounded-full bg-card text-primary hover:bg-primary hover:text-primary-foreground"><Plus className="h-3.5 w-3.5" /></button>
                   </div>
-                  <button onClick={() => cart.remove(i.id)} className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:bg-primary/10 hover:text-primary"><Trash2 className="h-4 w-4" /></button>
+                  <button aria-label={`Remove ${i.name} from cart`} onClick={() => cart.remove(i.id)} className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:bg-primary/10 hover:text-primary"><Trash2 className="h-4 w-4" /></button>
                 </li>
               ))}
             </ul>
@@ -346,31 +354,12 @@ function CartPage() {
           <section className="rounded-2xl bg-card p-5 shadow-[var(--shadow-card)]">
             <h2 className="mb-4 flex items-center gap-2 font-semibold"><MapPin className="h-4 w-4 text-primary" /> Delivery Address</h2>
             <div className="grid gap-3">
-              <FormField label="Address Line 1" required value={addr.line1} onChange={(v) => update("line1", v)} placeholder="House / Flat, Street" error={liveErrors.line1} />
+              <FormField label="Address Line 1" required value={addr.line1} onChange={(v) => update("line1", v)} onBlur={() => touch("line1")} placeholder="House / Flat, Street" error={liveErrors.line1} />
               <FormField label="Address Line 2" value={addr.line2} onChange={(v) => update("line2", v)} placeholder="Landmark (optional)" />
               <div className="grid grid-cols-2 gap-3">
-                <FormField label="City" required value={addr.city} onChange={(v) => update("city", v)} placeholder="City" error={liveErrors.city} />
-                <FormField label="Pincode" required value={addr.pincode} onChange={(v) => update("pincode", v.replace(/\D/g, "").slice(0, 6))} placeholder="6 digits" error={liveErrors.pincode} />
+                <FormField label="City" required value={addr.city} onChange={(v) => update("city", v)} onBlur={() => touch("city")} placeholder="City" error={liveErrors.city} />
+                <FormField label="Pincode" required value={addr.pincode} onChange={(v) => update("pincode", v.replace(/\D/g, "").slice(0, 6))} onBlur={() => touch("pincode")} placeholder="6 digits" error={liveErrors.pincode} />
               </div>
-            </div>
-
-            {/* Delivery time picker */}
-            <div className="mt-4 rounded-xl border border-input bg-background p-4">
-              <label className="block">
-                <span className="mb-2 flex items-center gap-2 text-sm font-semibold">
-                  <Clock className="h-4 w-4 text-primary" />
-                  When do you need it delivered? <span className="text-primary">*</span>
-                </span>
-                <input
-                  type="time"
-                  value={deliveryTime}
-                  onChange={(e) => { setDeliveryTime(e.target.value); setDeliveryTimeError(""); }}
-                  className={`w-full rounded-lg border bg-card px-3 py-2.5 text-sm outline-none transition focus:ring-2 focus:ring-primary/20 ${
-                    deliveryTimeError ? "border-primary" : "border-input focus:border-primary"
-                  }`}
-                />
-                {deliveryTimeError && <p className="mt-1 text-xs text-primary">{deliveryTimeError}</p>}
-              </label>
             </div>
           </section>
 
@@ -389,9 +378,9 @@ function CartPage() {
   );
 }
 
-function FormField({ label, value, onChange, placeholder, required, error }: {
+function FormField({ label, value, onChange, onBlur, placeholder, required, error }: {
   label: string; value: string; onChange: (v: string) => void;
-  placeholder?: string; required?: boolean; error?: string;
+  onBlur?: () => void; placeholder?: string; required?: boolean; error?: string;
 }) {
   return (
     <label className="block">
@@ -399,6 +388,7 @@ function FormField({ label, value, onChange, placeholder, required, error }: {
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur}
         placeholder={placeholder}
         className={`w-full rounded-lg border bg-background px-3 py-2.5 text-sm outline-none transition focus:ring-2 focus:ring-primary/20 ${error ? "border-primary" : "border-input focus:border-primary"}`}
       />

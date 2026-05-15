@@ -23,7 +23,7 @@ export interface UserProfile {
   name: string;
   email: string;
   phone: string;
-  role: "customer" | "admin";
+  role: "customer" | "admin" | "delivery";
   createdAt: Timestamp;
 }
 

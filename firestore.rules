@@ -8,10 +8,22 @@ service cloud.firestore {
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin";
     }
 
-    // Users: own profile read/write; admin can read all
+    // Helper: check if the requesting user is a delivery partner
+    function isDelivery() {
+      return request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "delivery";
+    }
+
+    // Helper: check if user is admin or delivery
+    function isStaff() {
+      return isAdmin() || isDelivery();
+    }
+
+    // Users: own profile read/write; admin can read & write all; delivery can read all
     match /users/{uid} {
       allow read, write: if request.auth != null && request.auth.uid == uid;
-      allow read: if isAdmin();
+      allow read: if isStaff();
+      allow write: if isAdmin();
     }
 
     // Menu: anyone can read (guest browsing); only admin can write
@@ -20,13 +32,20 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Orders: customers can create & read their own; admin can read & update all
+    // Orders: customers can only create their own order (userId must match auth uid).
+    // Staff can read all. Only staff can update, but ONLY the status/delivery fields.
     match /orders/{orderId} {
-      allow create: if request.auth != null;
+      allow create: if request.auth != null
+        && request.resource.data.userId == request.auth.uid;
+
       allow read: if request.auth != null && (
-        resource.data.userId == request.auth.uid || isAdmin()
+        resource.data.userId == request.auth.uid || isStaff()
       );
-      allow update: if isAdmin();
+
+      // Restrict update to only status tracking fields — prevents tampering with amount/items
+      allow update: if isStaff()
+        && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['status', 'deliveredBy', 'deliveredByUid', 'updatedAt']);
     }
 
     // Sessions: each user manages their own; admin can read all

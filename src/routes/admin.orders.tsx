@@ -1,8 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Search, X, History, Activity, Loader2 } from "lucide-react";
+import { Search, X, History, Activity, Loader2, Phone } from "lucide-react";
 import { collection, onSnapshot, orderBy, query, doc, updateDoc, serverTimestamp, where, getDocs, limit, startAfter } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { useAuth } from "@/contexts/AuthContext";
 
 export const Route = createFileRoute("/admin/orders")({ component: AdminOrders });
 
@@ -20,15 +21,17 @@ type Order = {
   id: string;
   userName: string;
   userPhone: string;
+  userEmail?: string;
   deliveryAddress: { line1: string; line2?: string; city: string; pincode: string };
   items: { name: string; price: number; quantity: number }[];
   totalAmount: number;
   status: Status;
   createdAt: any;
-  deliveryTime?: string;
+  deliveredBy?: string;
 };
 
 function AdminOrders() {
+  const { user, userProfile } = useAuth();
   const [activeOrders, setActiveOrders] = useState<Order[]>([]);
   const [previousOrders, setPreviousOrders] = useState<Order[]>([]);
   const [loadingActive, setLoadingActive] = useState(true);
@@ -99,7 +102,12 @@ function AdminOrders() {
     const next = FLOW[idx + 1];
     setUpdating(order.id);
     try {
-      await updateDoc(doc(db, "orders", order.id), { status: next, updatedAt: serverTimestamp() });
+      const updatePayload: any = { status: next, updatedAt: serverTimestamp() };
+      if (next === "delivered" && userProfile) {
+        updatePayload.deliveredBy = userProfile.name || "Unknown";
+        updatePayload.deliveredByUid = user?.uid ?? "";
+      }
+      await updateDoc(doc(db, "orders", order.id), updatePayload);
     } finally {
       setUpdating(null);
     }
@@ -121,19 +129,17 @@ function AdminOrders() {
           o.id.toLowerCase().includes(q) ||
           o.userName?.toLowerCase().includes(q) ||
           o.userPhone?.includes(q) ||
+          o.userEmail?.toLowerCase().includes(q) ||
           o.status.toLowerCase().includes(q)
         );
       })
     : displayedOrders;
 
-  // Sort active orders: by deliveryTime asc if available, else by createdAt desc
+  // Sort active orders: by createdAt desc; orders with null createdAt (pending write) go to end
   const sorted = [...filtered].sort((a, b) => {
     if (showPrevious) return 0; // Server already sorted these
-    if (a.deliveryTime && b.deliveryTime) return a.deliveryTime.localeCompare(b.deliveryTime);
-    if (a.deliveryTime) return -1;
-    if (b.deliveryTime) return 1;
-    const aTime = a.createdAt?.toMillis?.() ?? 0;
-    const bTime = b.createdAt?.toMillis?.() ?? 0;
+    const aTime = a.createdAt?.toMillis?.() ?? -1;
+    const bTime = b.createdAt?.toMillis?.() ?? -1;
     return bTime - aTime;
   });
 
@@ -178,7 +184,7 @@ function AdminOrders() {
           className="w-full rounded-xl border border-input bg-card py-2.5 pl-10 pr-10 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
         />
         {search && (
-          <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+          <button aria-label="Clear search" onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
             <X className="h-4 w-4" />
           </button>
         )}
@@ -206,41 +212,40 @@ function AdminOrders() {
                 <article key={o.id} className="rounded-xl bg-card p-5 shadow-[var(--shadow-card)]">
                   <header className="mb-3 flex items-start justify-between gap-3">
                     <div>
-                      <div className="flex items-center gap-2">
-                        <p className="font-bold">#{o.id.slice(0, 8).toUpperCase()}</p>
-                        {o.userPhone ? (
-                          <a 
-                            href={`tel:${o.userPhone}`} 
-                            className="flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary hover:bg-primary hover:text-white transition-colors"
-                          >
-                            📞 {o.userPhone}
-                          </a>
-                        ) : (
-                          <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] text-muted-foreground">No phone</span>
-                        )}
-                      </div>
+                      <p className="font-bold">#{o.id.slice(0, 8).toUpperCase()}</p>
                       <p className="text-xs text-muted-foreground">{formatTime(o.createdAt)}</p>
                     </div>
                     <div className="flex items-center gap-2">
-                      {o.deliveryTime && (
-                        <span className="flex items-center gap-1 rounded-full bg-[oklch(0.93_0.06_250)] px-2.5 py-0.5 text-xs font-bold text-[oklch(0.3_0.18_250)]">
-                          🕐 By {o.deliveryTime}
-                        </span>
-                      )}
                       <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize ${STATUS_STYLE[o.status]}`}>
                         {o.status}
                       </span>
                     </div>
                   </header>
 
-                  <div className="mb-3 rounded-lg bg-secondary p-3 text-sm">
-                    <p className="font-semibold">{o.userName}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {o.userPhone ? `Phone: ${o.userPhone}` : "No phone provided"}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {addr.line1}{addr.line2 ? `, ${addr.line2}` : ""}, {addr.city} — {addr.pincode}
-                    </p>
+                  <div className="mb-3 flex items-start justify-between gap-3 rounded-lg bg-secondary p-3 text-sm">
+                    <div>
+                      <p className="font-semibold">{o.userName}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {o.userPhone ? `Phone: ${o.userPhone}` : "No phone provided"}
+                      </p>
+                      {o.userEmail && (
+                        <p className="text-xs text-muted-foreground">
+                          Email: {o.userEmail}
+                        </p>
+                      )}
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {addr.line1}{addr.line2 ? `, ${addr.line2}` : ""}, {addr.city} — {addr.pincode}
+                      </p>
+                    </div>
+                    {o.userPhone && (
+                      <a 
+                        href={`tel:${o.userPhone}`}
+                        aria-label={`Call ${o.userName}`}
+                        className="flex shrink-0 items-center gap-1.5 rounded-lg bg-green-500 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-green-600"
+                      >
+                        <Phone className="h-4 w-4" /> Call
+                      </a>
+                    )}
                   </div>
 
                   <ul className="mb-3 space-y-1 text-sm">
@@ -263,7 +268,12 @@ function AdminOrders() {
                         {updating === o.id ? "Updating…" : `Mark as ${nextLabel}`}
                       </button>
                     ) : (
-                      <span className="text-xs font-semibold text-[oklch(0.4_0.14_145)]">Completed</span>
+                      <div className="text-right">
+                        <span className="text-xs font-semibold text-[oklch(0.4_0.14_145)]">Completed</span>
+                        <p className="mt-0.5 text-[10px] text-muted-foreground">
+                          by {o.deliveredBy || "Legacy Order"}
+                        </p>
+                      </div>
                     )}
                   </div>
                 </article>

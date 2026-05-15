@@ -31,6 +31,8 @@ function LoginPage() {
       const profile = await getUserProfile(user.uid);
       if (profile?.role === "admin") {
         navigate({ to: "/admin" });
+      } else if (profile?.role === "delivery") {
+        navigate({ to: "/admin/orders" });
       } else {
         navigate({ to: "/menu" });
       }
@@ -59,6 +61,8 @@ function LoginPage() {
         navigate({ to: "/complete-profile" });
       } else if (profile?.role === "admin") {
         navigate({ to: "/admin" });
+      } else if (profile?.role === "delivery") {
+        navigate({ to: "/admin/orders" });
       } else {
         navigate({ to: "/menu" });
       }
