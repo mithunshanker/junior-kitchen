@@ -21,9 +21,10 @@ export default defineConfig({
     tsconfigPaths(),
     VitePWA({
       registerType: "autoUpdate",
-      // generateSW strategy: VitePWA auto-generates the precaching SW (sw.js).
-      // The FCM background handler remains at /firebase-messaging-sw.js (registered manually in main.tsx).
-      strategies: "generateSW",
+      // Use injectManifest so we can integrate Firebase directly into the root SW
+      strategies: "injectManifest",
+      srcDir: "src",
+      filename: "sw.ts",
       manifest: {
         name: "Junior Kitchen Briyani",
         short_name: "Junior Kitchen",
@@ -45,10 +46,7 @@ export default defineConfig({
             purpose: "any maskable",
           },
         ],
-      },
-      workbox: {
-        // Import FCM logic directly into the generated VitePWA service worker
-        importScripts: ["/firebase-messaging-sw-import.js"],
+
       },
       devOptions: {
         enabled: true,
