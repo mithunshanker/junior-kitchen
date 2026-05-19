@@ -16,18 +16,11 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
-// Background message handler — shows the notification manually
+// Background message handler
 messaging.onBackgroundMessage((payload) => {
   console.log("[FCM SW] Background message received:", payload);
-  const { title, body, image } = payload.notification ?? {};
-  const clickUrl = payload.data?.clickUrl ?? "/";
-
-  self.registration.showNotification(title ?? "Junior Kitchen", {
-    body: body ?? "",
-    icon: image ?? "/pwa-192x192.png",
-    badge: "/pwa-192x192.png",
-    data: { clickUrl },
-  });
+  // Do NOT call self.registration.showNotification manually if the payload contains `notification`.
+  // The Firebase SDK will automatically display the notification based on the payload.
 });
 
 // Notification click — focus existing window or open new tab

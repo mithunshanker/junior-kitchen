@@ -78,7 +78,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         notification: {
           title: "🔔 New Order Received!",
           body:  `Order #${orderId.slice(0, 8).toUpperCase()} has been placed.`,
-          imageUrl: "https://junior-kitchen.vercel.app/pwa-192x192.png",
         },
         data: { clickUrl: "/admin/orders" },
         webpush: {
@@ -112,7 +111,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         notification: {
           title: "🍛 Order Update",
           body:  `Your order is now: ${label}`,
-          imageUrl: "https://junior-kitchen.vercel.app/pwa-192x192.png",
         },
         data: { clickUrl },
         webpush: {
