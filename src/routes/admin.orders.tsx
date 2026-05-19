@@ -115,7 +115,11 @@ function AdminOrders() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ type: "order_update", orderId: order.id }),
-      }).catch(() => {/* non-critical */});
+      })
+      .then(async (res) => {
+        if (!res.ok) console.error("Notification API failed:", await res.text());
+      })
+      .catch((err) => console.error("Network error calling notify:", err));
     } finally {
       setUpdating(null);
     }

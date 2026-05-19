@@ -250,7 +250,11 @@ function CartPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ type: "new_order", orderId: ref.id }),
-      }).catch(() => {/* non-critical */});
+      })
+      .then(async (res) => {
+        if (!res.ok) console.error("Notification API failed:", await res.text());
+      })
+      .catch((err) => console.error("Network error calling notify:", err));
 
       cart.clear();
       navigate({ to: "/orders/$orderId", params: { orderId: ref.id } });
