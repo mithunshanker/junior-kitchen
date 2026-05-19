@@ -47,8 +47,8 @@ export default defineConfig({
         ],
       },
       workbox: {
-        // Don't let the generated SW intercept the FCM service worker file
-        navigateFallbackDenylist: [/^\/firebase-messaging-sw\.js/],
+        // Import FCM logic directly into the generated VitePWA service worker
+        importScripts: ["/firebase-messaging-sw-import.js"],
       },
       devOptions: {
         enabled: true,

@@ -7,16 +7,7 @@ import app, { db } from "./firebase";
 
 const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY;
 
-// FCM SW is registered at its own scope so it doesn't conflict with VitePWA's sw.js
-const FCM_SW_URL   = "/firebase-messaging-sw.js";
-const FCM_SW_SCOPE = "/firebase-messaging-sw-scope/";
 
-/** Register (or re-use) the FCM service worker at its isolated scope. */
-async function getFcmSwRegistration(): Promise<ServiceWorkerRegistration> {
-  const existing = await navigator.serviceWorker.getRegistration(FCM_SW_SCOPE);
-  if (existing) return existing;
-  return navigator.serviceWorker.register(FCM_SW_URL, { scope: FCM_SW_SCOPE });
-}
 
 /** Request notification permission and save the FCM token to Firestore. */
 export async function subscribeToPush(uid: string): Promise<string | null> {
@@ -32,8 +23,9 @@ export async function subscribeToPush(uid: string): Promise<string | null> {
       return null;
     }
 
-    const swReg = await getFcmSwRegistration();
-    console.log("[push] Using SW registration:", swReg.scope);
+    // Wait for the VitePWA root service worker to be ready
+    const swReg = await navigator.serviceWorker.ready;
+    console.log("[push] Using ROOT SW registration:", swReg.scope);
 
     const messaging = getMessaging(app);
     
@@ -70,7 +62,7 @@ export async function unsubscribeFromPush(uid: string) {
   try {
     if (!("Notification" in window) || !("serviceWorker" in navigator)) return;
 
-    const swReg = await getFcmSwRegistration();
+    const swReg = await navigator.serviceWorker.ready;
     const messaging = getMessaging(app);
     
     if (!VAPID_KEY) return;
