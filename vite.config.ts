@@ -6,14 +6,6 @@ import tsconfigPaths from "vite-tsconfig-paths";
 import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
-  server: {
-    proxy: {
-      "/api": {
-        target: "https://junior-kitchen.vercel.app",
-        changeOrigin: true,
-      },
-    },
-  },
   plugins: [
     TanStackRouterVite({ autoCodeSplitting: true }),
     react(),
@@ -21,10 +13,6 @@ export default defineConfig({
     tsconfigPaths(),
     VitePWA({
       registerType: "autoUpdate",
-      // Use injectManifest so we can integrate Firebase directly into the root SW
-      strategies: "injectManifest",
-      srcDir: "src",
-      filename: "sw.ts",
       manifest: {
         name: "Junior Kitchen Briyani",
         short_name: "Junior Kitchen",
@@ -46,7 +34,6 @@ export default defineConfig({
             purpose: "any maskable",
           },
         ],
-
       },
       devOptions: {
         enabled: true,

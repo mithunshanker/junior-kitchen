@@ -5,7 +5,6 @@ import { useCart, type Dish } from "@/lib/cart-context";
 import { Logo } from "@/components/logo";
 import { useAuth } from "@/contexts/AuthContext";
 import { signOut } from "@/lib/auth";
-import { unsubscribeFromPush } from "@/lib/push";
 import { collection, query, where, getDocs, limit, startAfter, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
@@ -138,7 +137,6 @@ function MenuPage() {
   }
 
   async function handleLogout() {
-    if (user) await unsubscribeFromPush(user.uid);
     await signOut();
     navigate({ to: "/menu" });
   }

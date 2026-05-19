@@ -27,14 +27,9 @@ export interface UserProfile {
   createdAt: Timestamp;
 }
 
-/** Sign in with email/password. Also marks the session as online. */
+/** Sign in with email/password. */
 export async function signIn(email: string, password: string) {
   const cred = await signInWithEmailAndPassword(auth, email, password);
-  await setDoc(
-    doc(db, "sessions", cred.user.uid),
-    { isOnline: true, lastSeen: serverTimestamp() },
-    { merge: true }
-  );
   return cred.user;
 }
 
@@ -57,10 +52,6 @@ export async function signUp(
     createdAt: serverTimestamp() as Timestamp,
   };
   await setDoc(doc(db, "users", cred.user.uid), profile);
-  await setDoc(doc(db, "sessions", cred.user.uid), {
-    isOnline: true,
-    lastSeen: serverTimestamp(),
-  });
   return cred.user;
 }
 
@@ -88,25 +79,11 @@ export async function signInWithGoogle() {
     await setDoc(doc(db, "users", uid), profile);
   }
 
-  await setDoc(
-    doc(db, "sessions", uid),
-    { isOnline: true, lastSeen: serverTimestamp() },
-    { merge: true }
-  );
-  
   return cred.user;
 }
 
-/** Sign out and mark session offline. */
+/** Sign out. */
 export async function signOut() {
-  const user = auth.currentUser;
-  if (user) {
-    await setDoc(
-      doc(db, "sessions", user.uid),
-      { isOnline: false, lastSeen: serverTimestamp() },
-      { merge: true }
-    );
-  }
   await firebaseSignOut(auth);
 }
 

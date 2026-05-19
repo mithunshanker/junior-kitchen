@@ -245,21 +245,6 @@ function CartPage() {
         updatedAt: serverTimestamp(),
       });
 
-      // Fire-and-forget: notify all admins and delivery partners
-      fetch("/api/notify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "new_order", orderId: ref.id }),
-      })
-      .then(async (res) => {
-        if (!res.ok) {
-          console.error("Notification API failed:", await res.text());
-        } else {
-          console.log("Notification API Success:", await res.json());
-        }
-      })
-      .catch((err) => console.error("Network error calling notify:", err));
-
       cart.clear();
       navigate({ to: "/orders/$orderId", params: { orderId: ref.id } });
     } catch (err) {

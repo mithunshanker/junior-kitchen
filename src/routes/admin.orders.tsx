@@ -1,10 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Search, X, History, Activity, Loader2, Phone, Bell } from "lucide-react";
+import { Search, X, History, Activity, Loader2, Phone } from "lucide-react";
 import { collection, onSnapshot, orderBy, query, doc, updateDoc, serverTimestamp, where, getDocs, limit, startAfter } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/contexts/AuthContext";
-import { usePushNotifications } from "@/hooks/usePushNotifications";
 
 export const Route = createFileRoute("/admin/orders")({ component: AdminOrders });
 
@@ -43,7 +42,6 @@ function AdminOrders() {
   const [updating, setUpdating] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const PAGE_SIZE = 10;
-  const { permission, loading: pushLoading, requestPermission } = usePushNotifications();
 
   // 1. Real-time listener for ACTIVE orders ONLY (pending, preparing, ready)
   useEffect(() => {
@@ -109,21 +107,6 @@ function AdminOrders() {
         updatePayload.deliveredByUid = user?.uid ?? "";
       }
       await updateDoc(doc(db, "orders", order.id), updatePayload);
-
-      // Fire-and-forget: notify the customer about their order status change
-      fetch("/api/notify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "order_update", orderId: order.id }),
-      })
-      .then(async (res) => {
-        if (!res.ok) {
-          console.error("Notification API failed:", await res.text());
-        } else {
-          console.log("Notification API Success:", await res.json());
-        }
-      })
-      .catch((err) => console.error("Network error calling notify:", err));
     } finally {
       setUpdating(null);
     }
@@ -169,24 +152,6 @@ function AdminOrders() {
           </p>
         </div>
         
-        {/* Notification opt-in banner for staff */}
-      {permission === "unknown" && (
-        <div className="flex items-center gap-3 rounded-xl border border-primary/20 bg-[var(--primary-light)] px-4 py-3">
-          <Bell className="h-5 w-5 shrink-0 text-primary" />
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-foreground">Enable order alerts</p>
-            <p className="text-xs text-muted-foreground">Get notified instantly when a new order is placed.</p>
-          </div>
-          <button
-            onClick={requestPermission}
-            disabled={pushLoading}
-            className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground hover:bg-[var(--primary-dark)] disabled:opacity-50"
-          >
-            {pushLoading ? "…" : "Enable"}
-          </button>
-        </div>
-      )}
-
       <div className="flex rounded-xl bg-secondary p-1">
           <button
             onClick={() => setShowPrevious(false)}
