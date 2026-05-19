@@ -92,11 +92,13 @@ export function listenForegroundMessages() {
       if (!title) return;
 
       if (Notification.permission === "granted") {
-        const n = new Notification(title, { body, icon: "/pwa-192x192.png" });
-        n.onclick = () => {
-          window.focus();
-          window.location.href = clickUrl;
-        };
+        navigator.serviceWorker.ready.then((reg) => {
+          reg.showNotification(title, {
+            body,
+            icon: "/pwa-192x192.png",
+            data: { clickUrl }
+          });
+        });
       }
     });
   } catch (err) {
