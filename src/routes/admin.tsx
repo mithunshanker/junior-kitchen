@@ -7,6 +7,7 @@ import { LayoutDashboard, Utensils, Receipt, Users, LogOut, Menu, X, Truck } fro
 import { Logo } from "@/components/logo";
 import { useAuth } from "@/contexts/AuthContext";
 import { signOut } from "@/lib/auth";
+import { unsubscribeFromPush } from "@/lib/push";
 
 export const Route = createFileRoute("/admin")({ component: AdminLayout });
 
@@ -43,6 +44,7 @@ function AdminLayout() {
   }, [loading, user, role, navigate, path]);
 
   async function handleLogout() {
+    if (user) await unsubscribeFromPush(user.uid);
     await signOut();
     navigate({ to: "/login" });
   }

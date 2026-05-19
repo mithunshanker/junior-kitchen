@@ -2,10 +2,10 @@
 // Requests notification permission, gets the FCM token, and saves it to the user's Firestore document.
 
 import { getMessaging, getToken, onMessage } from "firebase/messaging";
-import { doc, updateDoc, arrayUnion } from "firebase/firestore";
+import { doc, setDoc, arrayUnion, arrayRemove } from "firebase/firestore";
 import app, { db } from "./firebase";
 
-const VAPID_KEY = "BOmwfOpz6KvPcLy3lr6DewVX00938XDY6393S_JvsuHYg1voyEnD8H2VtdaNcJkf-R_BEN_MFaWi2Cl-AqdIT5E";
+const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY;
 
 // FCM SW is registered at its own scope so it doesn't conflict with VitePWA's sw.js
 const FCM_SW_URL   = "/firebase-messaging-sw.js";
@@ -36,6 +36,12 @@ export async function subscribeToPush(uid: string): Promise<string | null> {
     console.log("[push] Using SW registration:", swReg.scope);
 
     const messaging = getMessaging(app);
+    
+    if (!VAPID_KEY) {
+      console.error("[push] VITE_FIREBASE_VAPID_KEY is missing from environment variables.");
+      return null;
+    }
+
     const token = await getToken(messaging, {
       vapidKey: VAPID_KEY,
       serviceWorkerRegistration: swReg,
@@ -49,13 +55,37 @@ export async function subscribeToPush(uid: string): Promise<string | null> {
     console.log("[push] FCM token obtained:", token.slice(0, 20) + "...");
 
     // Save token to users/{uid}.fcmTokens — arrayUnion deduplicates
-    await updateDoc(doc(db, "users", uid), { fcmTokens: arrayUnion(token) });
+    await setDoc(doc(db, "users", uid), { fcmTokens: arrayUnion(token) }, { merge: true });
     console.log("[push] Token saved to Firestore for uid:", uid);
 
     return token;
   } catch (err) {
     console.error("[push] subscribeToPush failed:", err);
     return null;
+  }
+}
+
+/** Remove the current device's FCM token from Firestore upon logout. */
+export async function unsubscribeFromPush(uid: string) {
+  try {
+    if (!("Notification" in window) || !("serviceWorker" in navigator)) return;
+
+    const swReg = await getFcmSwRegistration();
+    const messaging = getMessaging(app);
+    
+    if (!VAPID_KEY) return;
+
+    const token = await getToken(messaging, {
+      vapidKey: VAPID_KEY,
+      serviceWorkerRegistration: swReg,
+    });
+
+    if (token) {
+      await setDoc(doc(db, "users", uid), { fcmTokens: arrayRemove(token) }, { merge: true });
+      console.log("[push] Token removed from Firestore for uid:", uid);
+    }
+  } catch (err) {
+    console.error("[push] unsubscribeFromPush failed:", err);
   }
 }
 
