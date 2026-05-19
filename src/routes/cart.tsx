@@ -252,7 +252,11 @@ function CartPage() {
         body: JSON.stringify({ type: "new_order", orderId: ref.id }),
       })
       .then(async (res) => {
-        if (!res.ok) console.error("Notification API failed:", await res.text());
+        if (!res.ok) {
+          console.error("Notification API failed:", await res.text());
+        } else {
+          console.log("Notification API Success:", await res.json());
+        }
       })
       .catch((err) => console.error("Network error calling notify:", err));
 

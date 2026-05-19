@@ -117,7 +117,11 @@ function AdminOrders() {
         body: JSON.stringify({ type: "order_update", orderId: order.id }),
       })
       .then(async (res) => {
-        if (!res.ok) console.error("Notification API failed:", await res.text());
+        if (!res.ok) {
+          console.error("Notification API failed:", await res.text());
+        } else {
+          console.log("Notification API Success:", await res.json());
+        }
       })
       .catch((err) => console.error("Network error calling notify:", err));
     } finally {
