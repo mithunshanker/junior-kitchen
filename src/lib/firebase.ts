@@ -7,13 +7,13 @@ import { getFirestore } from "firebase/firestore";
 import { getMessaging, isSupported } from "firebase/messaging";
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyAAj-j0CNAaqKpZWp_imUTmaGiBgxkaFcQ",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "junior-kitchen.firebaseapp.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "junior-kitchen",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "junior-kitchen.firebasestorage.app",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "982875354224",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:982875354224:web:c35678e80b8197b96070b5",
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || "G-ZQJ8N5TTG9",
 };
 
 // Prevent re-initialization during HMR

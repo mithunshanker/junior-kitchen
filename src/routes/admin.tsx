@@ -59,6 +59,19 @@ function AdminLayout() {
     );
   }
 
+  // Synchronous check during render to prevent flash of unauthorized pages (e.g. Dashboard) for delivery partners before redirect runs
+  if (role === "delivery") {
+    const allowed = ["/admin/orders", "/admin/customers"];
+    const isAllowed = allowed.some((p) => path === p || path.startsWith(p + "/"));
+    if (!isAllowed) {
+      return (
+        <div className="flex min-h-screen items-center justify-center bg-secondary">
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />
+        </div>
+      );
+    }
+  }
+
   return (
     <div className="flex min-h-screen w-full bg-secondary">
       {/* Desktop sidebar */}

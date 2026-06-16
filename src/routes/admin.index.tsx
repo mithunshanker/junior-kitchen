@@ -3,7 +3,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Receipt, ChefHat, Package, CheckCircle2, Clock } from "lucide-react";
-import { collection, onSnapshot, query, orderBy, limit } from "firebase/firestore";
+import { collection, onSnapshot, query, orderBy, limit, getCountFromServer, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
 export const Route = createFileRoute("/admin/")({ component: Dashboard });
@@ -14,26 +14,40 @@ function Dashboard() {
   const [counts, setCounts] = useState({ total: 0, pending: 0, preparing: 0, ready: 0, delivered: 0 });
   const [recentOrders, setRecentOrders] = useState<OrderSummary[]>([]);
 
-  // Real-time order counts
-  useEffect(() => {
-    const unsub = onSnapshot(collection(db, "orders"), (snap) => {
-      const docs = snap.docs.map((d) => d.data().status as string);
+  // Function to refresh counts using Aggregation API
+  const refreshCounts = async () => {
+    try {
+      const [totalSnap, pendingSnap, preparingSnap, readySnap, deliveredSnap] = await Promise.all([
+        getCountFromServer(collection(db, "orders")),
+        getCountFromServer(query(collection(db, "orders"), where("status", "==", "pending"))),
+        getCountFromServer(query(collection(db, "orders"), where("status", "==", "preparing"))),
+        getCountFromServer(query(collection(db, "orders"), where("status", "==", "ready"))),
+        getCountFromServer(query(collection(db, "orders"), where("status", "==", "delivered"))),
+      ]);
+
       setCounts({
-        total: docs.length,
-        pending: docs.filter((s) => s === "pending").length,
-        preparing: docs.filter((s) => s === "preparing").length,
-        ready: docs.filter((s) => s === "ready").length,
-        delivered: docs.filter((s) => s === "delivered").length,
+        total: totalSnap.data().count,
+        pending: pendingSnap.data().count,
+        preparing: preparingSnap.data().count,
+        ready: readySnap.data().count,
+        delivered: deliveredSnap.data().count,
       });
-    });
-    return () => unsub();
+    } catch (err) {
+      console.error("Error fetching order counts:", err);
+    }
+  };
+
+  // Initial load
+  useEffect(() => {
+    refreshCounts();
   }, []);
 
-  // Recent orders (last 4)
+  // Recent orders (last 4) - triggers counts refresh on any order creation/status update
   useEffect(() => {
     const q = query(collection(db, "orders"), orderBy("createdAt", "desc"), limit(4));
     const unsub = onSnapshot(q, (snap) => {
       setRecentOrders(snap.docs.map((d) => ({ id: d.id, ...d.data() } as OrderSummary)));
+      refreshCounts();
     });
     return () => unsub();
   }, []);
